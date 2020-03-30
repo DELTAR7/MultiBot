@@ -1,0 +1,334 @@
+import discord
+from discord.ext import commands
+import asyncio
+import bot_util as bt
+import youtube_dl
+import os
+import datetime
+import sys
+from bot_util import YoutubeSearch
+import re
+
+
+def setup(bot):
+    bt.INFO('Loading Music.py')
+    bot.add_cog(Music(bot))
+
+def teardown(bot):
+    bt.INFO('Unloading Music.py')
+
+default_text = """**__Queue list:__**
+                Join a VoiceChannel and search a song by name or url.
+                For playlists append `-a` after the url.
+                Supports YouTube"""
+
+default_preview = bt.embed_message("No song playing currently", colour=0xd462fd, footer='Use the prefix ! for commands')
+
+class Music(commands.Cog):
+    players = {}  # dict with structure as : player: [songs]
+
+    _channels = {}
+
+    def __init__(self, bot):
+        self._bot = bot
+        bt.INFO('Initialised Music Cog')
+
+    @property
+    def channels(self):
+        return self._channels
+    
+    @channels.setter
+    def channels(self, data):
+        self._channels = data
+        #bt.dprint(self._channels)
+
+    def get_guild_data(self, gid):
+        if gid in self._channels.keys():
+            return self._channels.get(gid)
+        return None
+
+    def set_guild_data(self, gid, data):
+        self._channels[str(gid)] = data
+
+    @commands.command(name='join')
+    async def join(self, ctx):
+        """Gets the bot to join the current channel the user is in"""
+        await self.do_join(ctx)
+
+    async def do_join(self, ctx):
+        try:
+            voice_client = await self.get_channel(ctx).connect()
+            if voice_client not in self.players:
+                self.players[voice_client] = []
+            else:
+                bt.WARN(f'{voice_client} is already in the players list!')
+                message = await ctx.send(embed=bt.embed_message('Already in the channel!', colour='orange'))
+                await message.delete(delay=5.0)
+
+            return voice_client
+        except BaseException as e:
+            ex_type, ex_value, ex_traceback = sys.exc_info()
+            bt.ERROR(f'Unable to join channel due to the following error: {ex_value}')
+    
+    async def play_song(self, client, file_data):
+        client.play(discord.FFmpegPCMAudio(file_data['file']))
+        client.volume = 100
+        bt.INFO(f'{client} Playing status: {client.is_playing()}')
+        await self.edit_preview(client)
+        await self.edit_song_message(client)
+        asyncio.create_task(self.play_next(client, file_data['duration']))
+
+    async def edit_song_message(self, client):
+        guild = client.guild
+        channel_id = self._channels.get(str(guild.id))
+        channel = bt.get_channel_by_id(guild, channel_id)
+        last_message = await channel.history().flatten()
+        last_message = last_message[0]
+        contents = default_text
+        for song in self.players.get(client):
+            contents += self.get_song_title(song)
+        await last_message.edit(content=contents)
+
+    async def edit_preview(self, client, default=False):
+        guild = client.guild
+        channel_id = self._channels.get(str(guild.id))
+        channel = bt.get_channel_by_id(guild, channel_id)
+        last_message = await channel.history().flatten()
+        last_message = last_message[1]
+        if not default:
+            top_song = self.players.get(client)[0]
+            title = self.get_song_title(top_song)
+            preview = discord.Embed(title=title, colour=discord.Colour(0xd462fd), url=top_song.get('link'), video=top_song.get('link'))
+            preview.set_image(url="http://img.youtube.com/vi/%s/0.jpg" % top_song.get('id'))
+            preview.set_footer(text='Use the prefix ! for commands')
+        else:
+            preview = default_preview
+        await last_message.edit(embed=preview)
+
+    def get_song_title(self, song):
+        mins = int(song["duration"]) // 60
+        seconds = int(song["duration"]) % 60
+        if song["track"] is None or song["artist"] is None:
+            title = song["title"]
+            title = re.sub('((\()?(L|l)yric(s)? (\))?)|((\()?(A|a)udio)(\))?', '', title)
+            contents = f'\n{title} ({mins}:{seconds})'
+        else:
+            contents = f'\n{song["track"]} - {song["artist"]} ({mins}:{seconds})'
+        return contents
+
+    @commands.command(name='play', aliases=['queue', 'q'])
+    async def play_command(self, ctx, song, *args):
+        """Adds the song to the queue, if the queue is empty it will play it. Usage: !play <url|song name>"""
+
+        await ctx.message.delete()
+        
+        if self._channels.get(str(ctx.guild.id)) is not None:
+            if ctx.channel.id == self._channels.get(str(ctx.guild.id)):
+        
+                channel = self.get_channel(ctx)
+                client = self.get_voice_client(channel)
+
+                if client is None:
+                    client = await self.do_join(ctx)
+
+                for arg in args:
+                    song += " " + arg
+
+                if client is not None:
+                    if not self.find_url(song):
+                        data = await self.find_song(song)
+                        song = 'https://youtube.com' + data.get('link')
+                    if len(self.players[client]) == 0:
+                        file_data = self.get_song(song)
+                        if file_data is not None:
+                            self.players[client].append(file_data)
+                            bt.INFO(f'Playing song: {file_data["title"]}')
+                            await self.play_song(client, file_data)
+                    else:
+                        file_data = self.get_song(song)
+                        if file_data is not None:
+                            self.players[client].append(file_data)
+                            await self.edit_song_message(client)
+            else:
+                music_channel = bt.get_channel_by_id(ctx.guild, self._channels.get(str(ctx.guild.id)))
+                await ctx.send(embed=bt.embed_message("Error!",description=f"That command is only available in the {music_channel} channel", colour='red'))
+        else:
+            await ctx.send(embed=bt.embed_message(f'Setup is not complete!', description="Run !setup for full setup or '!setup music' for just music", colour='red'))
+
+    def find_url(self, string):
+        url = re.findall('http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+] |[!*\(\), ]|(?:%[0-9a-fA-F][0-9a-fA-F]))+', string)
+        if len(url) != 0:
+            bt.INFO('Song was a url')
+            return True
+        else:
+            bt.INFO('Song was not a url')
+            return False
+
+    @commands.command()
+    async def stop(self, ctx):
+        """Stops playback and clears the queue"""
+        await ctx.message.delete()
+        channel = self.get_channel(ctx)
+        client = self.get_voice_client(channel)
+        bt.INFO(f'Stopped playback for {client}')
+
+        if client is not None:
+            client.stop()
+            self.players[client] = []
+
+    @commands.command(name='pause', aliases=['p'])
+    async def pause(self, ctx):
+        """Pauses the current song"""
+        await ctx.message.delete()
+        channel = self.get_channel(ctx)
+        client = self.get_voice_client(channel)
+        bt.INFO(f'Paused playback for {client}')
+
+        if client is not None:
+            client.pause()
+            await self.edit_preview(client, default=True)
+
+    @commands.command(name='resume', aliases=['r'])
+    async def resume(self, ctx):
+        """Resumes the current playback"""
+        await ctx.message.delete()
+        channel = self.get_channel(ctx)
+        client = self.get_voice_client(channel)
+        bt.INFO(f'Resumed playback for {client}')
+
+        if client is not None:
+            if client.is_paused():
+                client.resume()
+                await self.edit_preview(client)
+
+    @commands.command()
+    async def leave(self, ctx):
+        """Removes the bot from the channel"""
+        await ctx.message.delete()
+        channel = self.get_channel(ctx)
+        client = self.get_voice_client(channel)
+        
+        if client is not None:
+            bt.INFO(f'Leaving {channel}')
+            await client.disconnect()
+            await self.edit_preview(client, default=True)
+            try:
+                del self.players[client]
+            except BaseException as e:
+                ex_type, ex_value, ex_traceback = sys.exc_info()
+                bt.ERROR(f'Tried to remove {client} from list but it did not exist')
+                bt.ERROR(f'Encountered the following error: {ex_value}')
+
+    @commands.command()
+    async def skip(self, ctx):
+        """Skips the current song and plays the next one"""
+        await ctx.message.delete()
+        channel = self.get_channel(ctx)
+        client = self.get_voice_client(channel)
+        
+        if client is not None:
+            bt.INFO(f'Skipping song for client {client}')
+            client.pause()
+            asyncio.create_task(self.play_next(client, -3))
+
+
+
+    def get_voice_client(self, channel):
+        clients = self.players.keys()
+        for client in clients:
+            if client.channel == channel:
+                return client
+        return None
+
+    def get_channel(self, ctx):
+        guild = ctx.guild
+        member = ctx.message.author
+        voice_channel = member.voice.channel
+        return voice_channel
+
+    async def play_next(self, player, timer):
+        try:
+            time = int(timer)
+            await asyncio.sleep(time + 3)
+            bt.INFO(f'Sleeping for {timer} seconds for player {player}')
+            if len(self.players[player]) == 1:
+                bt.INFO(f'No more songs to play for {player}')
+                self.players[player] = []
+                await self.edit_song_message(player)
+                asyncio.create_task(self.empty(player, datetime.datetime.now()))
+            elif len(self.players[player]) > 1:
+                self.players[player].pop(0)
+                next_song = self.players[player][0]
+                bt.INFO(f'Playing next song in queue for {player} : {next_song["title"]}')
+                await self.play_song(player, next_song)
+        except BaseException as e:
+            ex_type, ex_value, ex_traceback = sys.exc_info()
+            bt.ERROR(f'Unable to play the next song due to an error: {ex_value}')
+
+    async def empty(self, player, time):
+        if len(self.players[player]) == 0:
+            now_time = datetime.datetime.now()
+            diff = now_time - time
+            if diff.seconds >= 50:
+                try:
+                    bt.INFO(f'Leaving {player.channel} as no songs have been added')
+                    await self.edit_preview(player, default=True)
+                    del self.players[player]
+                    await player.disconnect()
+                except Exception as e:
+                    bt.ERROR(f'Unable to delete {player} from my players')
+            else:
+                await asyncio.sleep(10)
+                await self.empty(player, time)   
+
+    def get_song(self, url, retries=0):
+        try:
+            info = self.download_song(url)
+            file_data = {'file': 'songs/' + info['title'] + '-' + info['id'] + '.mp3', 'title': info['title'],
+                         'artist': info['artist'], 'duration': info['duration'], 'track': info['track'], 'id': info['id'], 'link': url}
+            bt.INFO(f'Title: {file_data["title"]}')
+            bt.INFO(f'Artist: {file_data["artist"]}')
+            bt.INFO(f'Track: {file_data["track"]}')
+            bt.INFO(f'Duration: {file_data["duration"]}')
+            bt.INFO(f'File: {file_data["file"]}')
+            bt.INFO(f'ID: {file_data["id"]}')
+            return file_data
+        except Exception as e:
+            bt.ERROR(f'Unable to find the requested song: {url}')
+            if retries < 3:
+                return self.get_song(url, retries=retries+1)
+            else:
+                return None
+
+    def download_song(self, url):
+        ydl_opts = {
+            'format': 'bestaudio/best',
+            'outtmpl': 'songs\\%(title)s-%(id)s.mp3',
+            'postprocessors': [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '192',
+            }],
+        }
+        with youtube_dl.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            file = 'songs\\'+ info['title'] + '-' + info['id'] + '.mp3'
+            if not os.path.isfile(file):
+                ydl.download([url])
+        return info
+
+    async def find_song(self, query, retries=0):
+        results = YoutubeSearch(query, max_results=10).to_dict()
+        useful = []
+        for result in results:
+            if 'lyric' in result.get('title').lower() or 'audio' in result.get('title').lower():
+                useful.append(result)
+
+        if len(useful) == 1:
+            return useful[0]
+        elif len(useful) > 1:
+            # TODO: Figure out a good way to choose between results
+            return useful[0]
+        elif retries < 5:
+            await asyncio.sleep(1)
+            return await self.find_song(query, retries=retries+1)
