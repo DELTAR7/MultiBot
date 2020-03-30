@@ -78,7 +78,8 @@ bot = BotClient(command_prefix=commands.when_mentioned_or("!"), description="A m
 def load():
     directory = os.getcwd()
     onlyfiles = [f for f in listdir(directory) if isfile(join(directory, f))]
-    key_file = onlyfiles[0]
+    print(onlyfiles)
+    key_file = onlyfiles[-1]
     tokens = load_data(key_file)
     token = list(tokens.values())[0]
     return token

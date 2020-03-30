@@ -1,11 +1,11 @@
+import inspect
+import json
+import urllib.parse
+
 import discord
-import sys
-import traceback
 import requests
 from bs4 import BeautifulSoup
-import urllib.parse
-import json
-import inspect
+
 
 class bcolours:
     HEADER = '\033[95m'
