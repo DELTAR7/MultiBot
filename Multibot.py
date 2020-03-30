@@ -1,5 +1,3 @@
-import signal
-
 from discord.ext import commands
 
 import bot_util as bt
@@ -140,7 +138,7 @@ def keyboardInterruptHandler(signal, frame):
 
 
 token = load()
-load_extensions()
-signal.signal(signal.SIGINT, keyboardInterruptHandler)
+# load_extensions()
+# signal.signal(signal.SIGINT, keyboardInterruptHandler)
 # bot.run('NjgzMzYxMTg1OTc3OTkxMzAw.Xlqbyg.RAl2fKwwQfFV1eRageY1cOe8h2M')
-bot.run(token)
+# bot.run(token)
