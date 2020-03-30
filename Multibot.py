@@ -1,13 +1,15 @@
 import json
-import discord
-from discord.ext import commands
-import bot_util as bt
-import sys
 import os
 import signal
+from os import listdir
+from os.path import isfile, join
+
+from discord.ext import commands
+
+import bot_util as bt
+
 
 class BotClient(commands.Bot):
-
     _channels = ['multibot-roles', 'multibot-music']
 
     async def on_ready(self):
@@ -69,9 +71,21 @@ class BotClient(commands.Bot):
         with open('data.json', 'w') as f:
             json.dump(data, f)
 
+
 bot = BotClient(command_prefix=commands.when_mentioned_or("!"), description="A multi-purpose bot")
 
+
+def load():
+    directory = os.getcwd()
+    onlyfiles = [f for f in listdir(directory) if isfile(join(directory, f))]
+    key_file = onlyfiles[0]
+    tokens = load_data(key_file)
+    token = list(tokens.values())[0]
+    return token
+
+
 list_extensions = ['Roles', 'Music', 'Misc']
+
 
 @bot.command()
 @commands.has_permissions(administrator=True)
@@ -111,7 +125,9 @@ def load_data(file):
         bt.ERROR(f'Unable to find file: {file}')
         return None
 
+
+token = load()
 load_extensions()
 signal.signal(signal.SIGINT, keyboardInterruptHandler)
 #bot.run('NjgzMzYxMTg1OTc3OTkxMzAw.Xlqbyg.RAl2fKwwQfFV1eRageY1cOe8h2M')
-bot.run('NjgzMzYxMTg1OTc3OTkxMzAw.XoII1Q.tLyAMRQUzB_hXabUrjTdmPhuxlA')
+bot.run(token)
