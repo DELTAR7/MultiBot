@@ -1,7 +1,5 @@
 import signal
-
 from discord.ext import commands
-
 import bot_util as bt
 from Secure import load, load_data, save_data
 
