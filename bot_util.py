@@ -10,7 +10,6 @@ from bs4 import BeautifulSoup
 class bcolours:
     """The ANSI colour codes
     """
-
     HEADER = '\033[95m'
     OKBLUE = '\033[94m'
     OKGREEN = '\033[92m'
@@ -130,6 +129,8 @@ def embed_message(title, colour=None, description='', footer=''):
     return embed
 
 
+#---------------------------------------Formatting---------------------------------------
+
 def dprint(data, parent='data', level=0):
     """Prints a dictionary with formatting
     
@@ -162,6 +163,9 @@ def cprint(text, colour, *args):
     """
     print(text.format(colour, bcolours.ENDC, *args))
 
+#----------------------------------------------------------------------------------------
+
+#----------------------------------------Logging-----------------------------------------
 
 def get_caller():
     """Gets the name of the file from which the call came from
@@ -210,6 +214,9 @@ def SETUP(string):
     """
     cprint('[{2}][{0}SETUP{1}] ' + string, bcolours.OKBLUE, get_caller())
 
+#----------------------------------------------------------------------------------------
+
+#------------------------------------Discord Searches------------------------------------
 
 def check_channel_by_name(guild, channel):
     """Checks if a channel is in a guild using its name
@@ -312,3 +319,5 @@ def get_role_from_guild(guild, rid):
             return role
     ERROR(f'Unable to find role with id {rid} in {guild.name}')
     return None
+
+#----------------------------------------------------------------------------------------

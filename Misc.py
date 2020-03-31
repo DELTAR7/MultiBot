@@ -47,22 +47,7 @@ class Misc(commands.Cog):
         self.music_cog = self._bot.get_cog('Music')
         self.roles_cog = self._bot.get_cog('Roles')
 
-    def gen_overwrites(self, ctx):
-        """Summary
-        
-        Args:
-            ctx: The context of the call
-        
-        Returns:
-            dict: A dictionary of discord Permission overwrites and roles
-        """
-        overwrites = {
-            ctx.guild.me: discord.PermissionOverwrite(read_messages=True, manage_channels=True, add_reactions=True,
-                                                      manage_messages=True, external_emojis=True, attach_files=True,
-                                                      embed_links=True),
-            ctx.guild.default_role: discord.PermissionOverwrite(read_messages=False)
-        }
-        return overwrites
+    #---------------------------------Category Attribute---------------------------------
 
     @property
     def categories(self):
@@ -83,6 +68,27 @@ class Misc(commands.Cog):
         self._categories = data
         # bt.dprint(self._categories)
 
+    #------------------------------------------------------------------------------------
+
+    #------------------------------------General Use-------------------------------------
+
+    def gen_overwrites(self, ctx):
+        """Summary
+        
+        Args:
+            ctx: The context of the call
+        
+        Returns:
+            dict: A dictionary of discord Permission overwrites and roles
+        """
+        overwrites = {
+            ctx.guild.me: discord.PermissionOverwrite(read_messages=True, manage_channels=True, add_reactions=True,
+                                                      manage_messages=True, external_emojis=True, attach_files=True,
+                                                      embed_links=True),
+            ctx.guild.default_role: discord.PermissionOverwrite(read_messages=False)
+        }
+        return overwrites
+
     @commands.command()
     async def echo(self, ctx, *args):
         """Echoes your message, Usage: !echo <sentence>
@@ -95,6 +101,10 @@ class Misc(commands.Cog):
         for word in args:
             output += word + ' '
         await ctx.send(content=output)
+
+    #------------------------------------------------------------------------------------
+
+    #-----------------------------------Clear Command------------------------------------
 
     @commands.command(name='clear')
     async def clear_command(self, ctx):
@@ -126,6 +136,11 @@ class Misc(commands.Cog):
             counter += 1
         return counter
 
+    #------------------------------------------------------------------------------------
+
+
+    #--------------------------------Setup Command Group---------------------------------
+
     @commands.group(name='setup', invoke_without_command=True)
     async def do_setup(self, ctx):
         """Adds the required channels for the bot to function in, Usage: !setup [optional] <roles|music>
@@ -149,28 +164,6 @@ class Misc(commands.Cog):
             self._categories[str(ctx.guild.id)] = category.id
         else:
             bt.INFO(f'Category already identified for guild {ctx.guild.id}')
-
-    @do_setup.command()
-    async def roles(self, ctx):
-        """Performs the setup for just the roles channel, Usage: !setup roles
-        
-        Args:
-            ctx: The context of the call
-        """
-        bt.INFO(f'Setting up roles for {ctx.guild.id}')
-        await self.setup(ctx)
-        await self.find_or_make_roles(ctx)
-
-    @do_setup.command()
-    async def music(self, ctx):
-        """Performs the setup for just the music channel, Usage: !setup music
-        
-        Args:
-            ctx: The context of the call
-        """
-        bt.INFO(f'Setting up music for {ctx.guild.id}')
-        await self.setup(ctx)
-        await self.find_or_make_music(ctx)
 
     async def find_or_make_category(self, ctx):
         """Summary
@@ -203,17 +196,18 @@ class Misc(commands.Cog):
 
         return category
 
-    async def find_channel(self, ctx, find):
-        bt.INFO(f'Finding {find} channel in {ctx.guild.id}')
-        channel = bt.get_channel_by_name(ctx.guild, find)
-        if channel is None:
-            bt.INFO(f'Unable to find {find} channel in {ctx.guild.id}, making one')
-            channel = await ctx.guild.create_text_channel(find, category=bt.get_channel_by_id(ctx.guild,
-                                                                                              self._categories.get(
-                                                                                                  f'{ctx.guild.id}')),
-                                                          overwrites=self.gen_overwrites(ctx))
-        else:
-            await self.clear(channel)
+    ####-------------------------Roles Setup Command-------------------------------------
+
+    @do_setup.command()
+    async def roles(self, ctx):
+        """Performs the setup for just the roles channel, Usage: !setup roles
+        
+        Args:
+            ctx: The context of the call
+        """
+        bt.INFO(f'Setting up roles for {ctx.guild.id}')
+        await self.setup(ctx)
+        await self.find_or_make_roles(ctx)
 
     async def find_or_make_roles(self, ctx):
         """Summary
@@ -234,6 +228,33 @@ class Misc(commands.Cog):
         await channel.send(embed=embed)
         await channel.send(content='Roles:\n')
         return channel
+
+    ####---------------------------------------------------------------------------------
+
+    ####-------------------------Music Setup Command-------------------------------------
+
+    @do_setup.command()
+    async def music(self, ctx):
+        """Performs the setup for just the music channel, Usage: !setup music
+        
+        Args:
+            ctx: The context of the call
+        """
+        bt.INFO(f'Setting up music for {ctx.guild.id}')
+        await self.setup(ctx)
+        await self.find_or_make_music(ctx)
+
+    async def find_channel(self, ctx, find):
+        bt.INFO(f'Finding {find} channel in {ctx.guild.id}')
+        channel = bt.get_channel_by_name(ctx.guild, find)
+        if channel is None:
+            bt.INFO(f'Unable to find {find} channel in {ctx.guild.id}, making one')
+            channel = await ctx.guild.create_text_channel(find, category=bt.get_channel_by_id(ctx.guild,
+                                                                                              self._categories.get(
+                                                                                                  f'{ctx.guild.id}')),
+                                                          overwrites=self.gen_overwrites(ctx))
+        else:
+            await self.clear(channel)
 
     async def find_or_make_music(self, ctx):
         """Summary
@@ -258,3 +279,7 @@ class Misc(commands.Cog):
         await channel.send(content=text)
 
         return channel
+
+    ####---------------------------------------------------------------------------------
+
+    #------------------------------------------------------------------------------------
